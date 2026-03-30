@@ -1,13 +1,14 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { useAuth } from '../contexts/AuthContext'
 
 export default function Header() {
   const location = useLocation()
   const navigate = useNavigate()
-  const isAuthed = !!localStorage.getItem('cf_token')
+  const { user, logout } = useAuth()
+  const isAuthed = !!user
 
   function handleSignOut() {
-    localStorage.removeItem('cf_token')
-    localStorage.removeItem('cf_user')
+    logout()
     navigate('/login')
   }
 
@@ -47,7 +48,7 @@ export default function Header() {
         {isAuthed ? (
           <div className="flex items-center gap-3">
             <span className="hidden sm:block font-mono text-xs text-on-surface-muted">
-              {localStorage.getItem('cf_user') || 'Student'}
+              {user?.displayName || 'Student'}
             </span>
             <button
               onClick={handleSignOut}

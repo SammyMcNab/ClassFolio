@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { mockProjects } from '../data/mockProjects'
+import { useGallery } from '../hooks/useGallery'
 import ProjectCard from '../components/ProjectCard'
 import BlobCanvas from '../components/BlobCanvas'
 import Header from '../components/Header'
@@ -8,11 +8,12 @@ import Footer from '../components/Footer'
 const SUBJECTS = ['All', 'Web Dev', 'Science', 'Art', 'Math', 'History', 'English', 'Other']
 
 export default function Gallery() {
+  const { projects, loading, error } = useGallery()
   const [search, setSearch] = useState('')
   const [activeSubject, setActiveSubject] = useState('All')
 
   const filtered = useMemo(() => {
-    return mockProjects.filter(p => {
+    return projects.filter(p => {
       const matchSubject = activeSubject === 'All' || p.subject === activeSubject
       const matchSearch =
         !search ||
@@ -21,7 +22,7 @@ export default function Gallery() {
         p.subject.toLowerCase().includes(search.toLowerCase())
       return matchSubject && matchSearch
     })
-  }, [search, activeSubject])
+  }, [projects, search, activeSubject])
 
   return (
     <>
@@ -42,7 +43,7 @@ export default function Gallery() {
                 Projects.
               </h1>
               <p className="text-on-surface-muted text-lg leading-relaxed font-sans max-w-lg">
-                Browse published work from our classrooms. No login required — share freely with parents, friends, and the world.
+                Browse published work from our classrooms. No login required. Share freely with parents, friends, and the world.
               </p>
             </div>
           </section>
@@ -90,7 +91,19 @@ export default function Gallery() {
           </div>
 
           {/* Grid */}
-          {filtered.length > 0 ? (
+          {loading ? (
+            <div className="py-24 text-center">
+              <p className="font-mono text-xs text-on-surface-muted uppercase tracking-widest animate-pulse">
+                Loading projects...
+              </p>
+            </div>
+          ) : error ? (
+            <div className="py-24 text-center">
+              <p className="font-mono text-xs text-red-400 uppercase tracking-widest">
+                {error.message ?? 'Failed to load projects.'}
+              </p>
+            </div>
+          ) : filtered.length > 0 ? (
             <section
               className="grid gap-5 pb-16"
               style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}

@@ -1,5 +1,6 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
+import { useAuth } from '../contexts/AuthContext'
 
 // Paper plane SVG path
 function PaperPlane({ style, className }) {
@@ -37,44 +38,31 @@ const PLANES = [
   { top: '45%', left: '50%', size: 18, delay: '-14s', dur: '24s', rotate: '20deg' },
 ]
 
-// Mock credentials — real auth wires to Cognito
-const MOCK_USERS = {
-  'student@demo.com': { password: 'demo123', name: 'Sam O.', role: 'student' },
-  'instructor@demo.com': { password: 'teach123', name: 'Ms. Johnson', role: 'instructor' },
-}
-
 export default function Login() {
   const navigate = useNavigate()
+  const auth = useAuth()
   const [tab, setTab] = useState('student')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPw, setShowPw] = useState(false)
-  const [error, setError] = useState('')
-  const [loading, setLoading] = useState(false)
 
   // Redirect if already authed
   useEffect(() => {
-    if (localStorage.getItem('cf_token')) navigate('/dashboard')
-  }, [navigate])
+    if (auth.user) navigate('/dashboard')
+  }, [auth.user, navigate])
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault()
-    setError('')
-    setLoading(true)
-
-    // Simulate network delay
-    setTimeout(() => {
-      const user = MOCK_USERS[email.toLowerCase()]
-      if (user && user.password === password) {
-        localStorage.setItem('cf_token', 'mock-jwt-token-' + Date.now())
-        localStorage.setItem('cf_user', user.name)
-        localStorage.setItem('cf_role', user.role)
-        navigate('/dashboard')
+    try {
+      const { mustResetPassword } = await auth.login({ studentId: email, password, role: tab })
+      if (mustResetPassword) {
+        navigate('/dashboard?forceReset=true')
       } else {
-        setError('Incorrect email or password. Try student@demo.com / demo123')
-        setLoading(false)
+        navigate('/dashboard')
       }
-    }, 800)
+    } catch {
+      // error is stored in auth.error
+    }
   }
 
   return (
@@ -209,18 +197,18 @@ export default function Login() {
               </button>
             </div>
 
-            {error && (
+            {auth.error && (
               <p className="font-mono text-xs text-red-400 border border-red-900/40 px-3 py-2 bg-red-900/10">
-                {error}
+                {auth.error.message ?? 'Incorrect email or password.'}
               </p>
             )}
 
             <button
               type="submit"
-              disabled={loading}
+              disabled={auth.loading}
               className="w-full py-3 bg-accent text-surface font-mono text-xs uppercase tracking-widest hover:bg-accent-dim transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
             >
-              {loading ? (
+              {auth.loading ? (
                 <>
                   <span
                     className="inline-block w-3 h-3 border border-surface border-t-transparent rounded-full"
@@ -240,9 +228,8 @@ export default function Login() {
           </p>
         </div>
 
-        {/* Demo hint */}
         <p className="text-center font-mono text-[10px] text-on-surface-muted/40 mt-4">
-          Demo: student@demo.com / demo123
+          Ask your instructor for your login credentials.
         </p>
       </div>
 

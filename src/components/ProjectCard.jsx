@@ -10,6 +10,12 @@ const SUBJECT_COLORS = {
   'Other':      'bg-zinc-800/60 text-zinc-400 border-zinc-600/30',
 }
 
+const STATUS_STYLES = {
+  draft: 'border-zinc-600/40 text-zinc-400 bg-zinc-900/50',
+  processing: 'border-amber-600/40 text-amber-300 bg-amber-900/30 animate-pulse',
+  failed: 'border-red-700/40 text-red-400 bg-red-900/30',
+}
+
 export default function ProjectCard({ project, showActions, onEdit, onDelete }) {
   const subjectStyle = SUBJECT_COLORS[project.subject] || SUBJECT_COLORS['Other']
 
@@ -34,6 +40,13 @@ export default function ProjectCard({ project, showActions, onEdit, onDelete }) 
         <span className={`absolute top-2 left-2 font-mono text-[10px] uppercase tracking-widest px-2 py-0.5 border ${subjectStyle}`}>
           {project.subject}
         </span>
+        {project.status && ['draft', 'processing', 'failed'].includes(project.status) && (
+          <span
+            className={`absolute bottom-2 left-2 font-mono text-[9px] uppercase tracking-widest px-2 py-0.5 border ${STATUS_STYLES[project.status]}`}
+          >
+            {project.status}
+          </span>
+        )}
         {/* View count */}
         <span className="absolute top-2 right-2 font-mono text-[10px] text-on-surface-muted flex items-center gap-1 bg-surface/70 px-2 py-0.5">
           <span className="material-symbols-outlined" style={{ fontSize: '12px' }}>visibility</span>

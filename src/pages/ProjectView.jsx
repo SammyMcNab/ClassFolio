@@ -1,6 +1,7 @@
-import { useState } from 'react'
-import { useParams, Link } from 'react-router-dom'
-import { mockProjects } from '../data/mockProjects'
+import { useState, useEffect } from 'react'
+import { useParams, useLocation, Link } from 'react-router-dom'
+import { useGallery } from '../hooks/useGallery'
+import { useAnalytics } from '../hooks/useAnalytics'
 import BlobCanvas from '../components/BlobCanvas'
 import Header from '../components/Header'
 import Footer from '../components/Footer'
@@ -21,12 +22,21 @@ const MOCK_COMMENTS = [
 
 export default function ProjectView() {
   const { id } = useParams()
+  const { state } = useLocation()
   const showToast = useToast()
-  const project = mockProjects.find(p => p.id === id)
+  const { projects } = useGallery()
+  const { trackView } = useAnalytics()
   const [reactions, setReactions] = useState({ thumbs: 12, celebrate: 7, star: 24, fire: 5 })
   const [reacted, setReacted] = useState({})
 
-  if (!project) {
+  // Resolve project: prefer router state (fast path from Gallery), fall back to gallery list
+  const project = state?.project ?? projects.find(p => p.id === id)
+
+  useEffect(() => {
+    if (id) trackView(id, 'project-view')
+  }, [id])
+
+  if (!project && projects.length > 0) {
     return (
       <>
         <BlobCanvas />
@@ -45,7 +55,23 @@ export default function ProjectView() {
     )
   }
 
-  const related = mockProjects.filter(p => p.subject === project.subject && p.id !== project.id).slice(0, 3)
+  if (!project) {
+    return (
+      <>
+        <BlobCanvas />
+        <div className="relative z-10 min-h-screen flex flex-col">
+          <Header />
+          <div className="flex-1 flex items-center justify-center">
+            <p className="font-mono text-xs text-on-surface-muted uppercase tracking-widest animate-pulse">
+              Loading project...
+            </p>
+          </div>
+        </div>
+      </>
+    )
+  }
+
+  const related = projects.filter(p => p.subject === project.subject && p.id !== project.id).slice(0, 3)
 
   function handleReaction(key) {
     if (reacted[key]) return

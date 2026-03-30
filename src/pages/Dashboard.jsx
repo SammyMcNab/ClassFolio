@@ -1,17 +1,17 @@
 import { useState, useEffect, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   Chart as ChartJS,
   CategoryScale, LinearScale, PointElement, LineElement,
   ArcElement, Tooltip, Legend, Filler
 } from 'chart.js'
 import { Line, Doughnut } from 'react-chartjs-2'
-import { mockProjects, mockAnalytics } from '../data/mockProjects'
-import { mockStudents } from '../data/mockStudents'
 import BlobCanvas from '../components/BlobCanvas'
 import Header from '../components/Header'
 import ProjectCard from '../components/ProjectCard'
 import { useToast } from '../components/Toast'
+import { useAuth } from '../contexts/AuthContext'
+import { useProjects } from '../hooks/useProjects'
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, ArcElement, Tooltip, Legend, Filler)
 
@@ -67,7 +67,8 @@ const doughnutOptions = {
 }
 
 // ─── STUDENT VIEW ──────────────────────────────────────────────────────────
-function StudentDashboard({ userName, navigate, showToast }) {
+function StudentDashboard({ userName, navigate, showToast, onLogout }) {
+  const { projects, uploading, uploadProgress, uploadAndDeploy, deleteProject } = useProjects()
   const [activeSection, setActiveSection] = useState('overview')
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const fileInputRef = useRef(null)
@@ -86,20 +87,34 @@ function StudentDashboard({ userName, navigate, showToast }) {
     showToast(`${file.name} ready to upload`, 'success')
   }
 
-  function handleFormSubmit(e) {
+  async function handleFormSubmit(e) {
     e.preventDefault()
-    showToast('Project uploaded and queued for deployment!', 'success')
-    setDroppedFile(null)
-    setForm({ title: '', subject: 'Web Dev', grade: '', description: '', visibility: 'public' })
+    try {
+      const { publicUrl } = await uploadAndDeploy({
+        file: droppedFile,
+        title: form.title,
+        description: form.description,
+      })
+      showToast(`Deployed! ${publicUrl}`, 'success')
+      setDroppedFile(null)
+      setForm({ title: '', subject: 'Web Dev', grade: '', description: '', visibility: 'public' })
+    } catch (err) {
+      showToast(err?.message || 'Upload failed', 'error')
+    }
   }
 
+  // Derive chart data from real projects
+  const subjectCounts = projects.reduce((acc, p) => {
+    acc[p.subject || 'Other'] = (acc[p.subject || 'Other'] || 0) + 1
+    return acc
+  }, {})
   const lineData = {
-    labels: mockAnalytics.weekLabels,
-    datasets: [{ data: mockAnalytics.weeklyViews, borderColor: '#e8b84b', backgroundColor: 'rgba(232,184,75,0.08)', tension: 0.4, fill: true, pointBackgroundColor: '#e8b84b', pointRadius: 3, pointHoverRadius: 5 }],
+    labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+    datasets: [{ data: [0, 0, 0, 0, 0, 0, 0], borderColor: '#e8b84b', backgroundColor: 'rgba(232,184,75,0.08)', tension: 0.4, fill: true, pointBackgroundColor: '#e8b84b', pointRadius: 3, pointHoverRadius: 5 }],
   }
   const doughnutData = {
-    labels: Object.keys(mockAnalytics.bySubject),
-    datasets: [{ data: Object.values(mockAnalytics.bySubject), backgroundColor: ['#60a5fa', '#4ade80', '#c084fc', '#f87171', '#fbbf24', '#f472b6'], borderWidth: 0 }],
+    labels: Object.keys(subjectCounts),
+    datasets: [{ data: Object.values(subjectCounts), backgroundColor: ['#60a5fa', '#4ade80', '#c084fc', '#f87171', '#fbbf24', '#f472b6'], borderWidth: 0 }],
   }
 
   const navLabel = STUDENT_NAV.find(n => n.key === activeSection)?.label
@@ -116,6 +131,7 @@ function StudentDashboard({ userName, navigate, showToast }) {
         initial={initial}
         role="Student"
         navigate={navigate}
+        onLogout={onLogout}
       />
 
       {sidebarOpen && <div className="fixed inset-0 z-30 bg-surface/60 lg:hidden" onClick={() => setSidebarOpen(false)} />}
@@ -126,17 +142,17 @@ function StudentDashboard({ userName, navigate, showToast }) {
         {activeSection === 'overview' && (
           <div className="space-y-8">
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              <StatCard label="My Projects" value={mockProjects.length} icon="folder_open" sub="Published" />
-              <StatCard label="Total Views"  value="1,320" icon="visibility" sub="↑ 18% this week" />
-              <StatCard label="Top Subject"  value="Art"   icon="palette"    sub="317 views" />
-              <StatCard label="This Week"    value="102"   icon="trending_up" sub="Views" />
+              <StatCard label="My Projects" value={projects.length} icon="folder_open" sub="Published" />
+              <StatCard label="Total Views"  value={projects.reduce((s, p) => s + (p.viewCount ?? p.views ?? 0), 0).toLocaleString()} icon="visibility" sub="All time" />
+              <StatCard label="Top Subject"  value={Object.entries(subjectCounts).sort((a,b)=>b[1]-a[1])[0]?.[0] ?? '—'} icon="palette" sub="Most projects" />
+              <StatCard label="Projects"    value={projects.length} icon="trending_up" sub="Deployed" />
             </div>
             <SectionHeader label="Recent Projects" action="View all →" onAction={() => setActiveSection('projects')} />
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {mockProjects.slice(0, 3).map(p => (
-                <ProjectCard key={p.id} project={p} showActions
-                  onEdit={() => showToast(`Editing "${p.title}" — coming soon`, 'info')}
-                  onDelete={() => showToast(`"${p.title}" deleted`, 'warning')}
+              {projects.slice(0, 3).map(p => (
+                <ProjectCard key={p.projectId ?? p.id} project={p} showActions
+                  onEdit={() => showToast(`Editing '${p.title}' (coming soon)`, 'info')}
+                  onDelete={async () => { await deleteProject(p.projectId ?? p.id); showToast(`"${p.title}" deleted`, 'warning') }}
                 />
               ))}
             </div>
@@ -145,10 +161,10 @@ function StudentDashboard({ userName, navigate, showToast }) {
 
         {activeSection === 'projects' && (
           <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))' }}>
-            {mockProjects.map(p => (
-              <ProjectCard key={p.id} project={p} showActions
-                onEdit={() => showToast(`Editing "${p.title}" — coming soon`, 'info')}
-                onDelete={() => showToast(`"${p.title}" deleted`, 'warning')}
+            {projects.map(p => (
+              <ProjectCard key={p.projectId ?? p.id} project={p} showActions
+                onEdit={() => showToast(`Editing '${p.title}' (coming soon)`, 'info')}
+                onDelete={async () => { await deleteProject(p.projectId ?? p.id); showToast(`"${p.title}" deleted`, 'warning') }}
               />
             ))}
           </div>
@@ -160,11 +176,12 @@ function StudentDashboard({ userName, navigate, showToast }) {
             dragOver={dragOver} setDragOver={setDragOver}
             fileInputRef={fileInputRef} handleFile={handleFile}
             form={form} setForm={setForm} onSubmit={handleFormSubmit}
+            uploading={uploading} uploadProgress={uploadProgress}
           />
         )}
 
         {activeSection === 'analytics' && (
-          <AnalyticsSection lineData={lineData} doughnutData={doughnutData} />
+          <AnalyticsSection lineData={lineData} doughnutData={doughnutData} projects={projects} />
         )}
 
         {activeSection === 'settings' && (
@@ -176,48 +193,65 @@ function StudentDashboard({ userName, navigate, showToast }) {
 }
 
 // ─── INSTRUCTOR VIEW ───────────────────────────────────────────────────────
-function InstructorDashboard({ userName, navigate, showToast }) {
+function InstructorDashboard({ userName, navigate, showToast, onLogout }) {
+  const { projects: rawProjects } = useProjects()
+  const auth = useAuth()
   const [activeSection, setActiveSection] = useState('overview')
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const [students, setStudents] = useState(mockStudents)
-  const [projects, setProjects] = useState(mockProjects.map(p => ({ ...p, status: 'approved' })))
+  const [students, setStudents] = useState([])
+  const [projectStatuses, setProjectStatuses] = useState({})
   const [showNewStudent, setShowNewStudent] = useState(false)
   const [newStudent, setNewStudent] = useState({ name: '', email: '', grade: '' })
+
+  const projects = rawProjects.map(p => ({ ...p, status: projectStatuses[p.projectId ?? p.id] ?? 'approved' }))
 
   const initial = userName.charAt(0)
   const navLabel = INSTRUCTOR_NAV.find(n => n.key === activeSection)?.label
 
   const pendingCount = projects.filter(p => p.status === 'pending').length
 
+  const subjectCounts = projects.reduce((acc, p) => {
+    acc[p.subject || 'Other'] = (acc[p.subject || 'Other'] || 0) + 1
+    return acc
+  }, {})
   const lineData = {
-    labels: mockAnalytics.weekLabels,
-    datasets: [{ data: [120, 240, 200, 410, 330, 510, 620, 760], borderColor: '#60a5fa', backgroundColor: 'rgba(96,165,250,0.08)', tension: 0.4, fill: true, pointBackgroundColor: '#60a5fa', pointRadius: 3, pointHoverRadius: 5 }],
+    labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+    datasets: [{ data: [0, 0, 0, 0, 0, 0, 0], borderColor: '#60a5fa', backgroundColor: 'rgba(96,165,250,0.08)', tension: 0.4, fill: true, pointBackgroundColor: '#60a5fa', pointRadius: 3, pointHoverRadius: 5 }],
   }
   const doughnutData = {
-    labels: Object.keys(mockAnalytics.bySubject),
-    datasets: [{ data: Object.values(mockAnalytics.bySubject), backgroundColor: ['#60a5fa', '#4ade80', '#c084fc', '#f87171', '#fbbf24', '#f472b6'], borderWidth: 0 }],
+    labels: Object.keys(subjectCounts),
+    datasets: [{ data: Object.values(subjectCounts), backgroundColor: ['#60a5fa', '#4ade80', '#c084fc', '#f87171', '#fbbf24', '#f472b6'], borderWidth: 0 }],
   }
 
   function approveProject(id) {
-    setProjects(prev => prev.map(p => p.id === id ? { ...p, status: 'approved' } : p))
+    setProjectStatuses(prev => ({ ...prev, [id]: 'approved' }))
     showToast('Project approved and published', 'success')
   }
   function rejectProject(id) {
-    setProjects(prev => prev.map(p => p.id === id ? { ...p, status: 'rejected' } : p))
+    setProjectStatuses(prev => ({ ...prev, [id]: 'rejected' }))
     showToast('Project rejected', 'warning')
   }
   function unpublishProject(id) {
-    setProjects(prev => prev.map(p => p.id === id ? { ...p, status: 'unpublished' } : p))
+    setProjectStatuses(prev => ({ ...prev, [id]: 'unpublished' }))
     showToast('Project unpublished', 'info')
   }
 
-  function createStudent(e) {
+  async function createStudent(e) {
     e.preventDefault()
-    const student = { id: `stu-00${students.length + 1}`, ...newStudent, projects: 0, status: 'pending', joined: new Date().toISOString().slice(0, 10) }
-    setStudents(prev => [...prev, student])
-    setNewStudent({ name: '', email: '', grade: '' })
-    setShowNewStudent(false)
-    showToast(`Account created for ${student.name}`, 'success')
+    try {
+      await auth.createStudent({
+        studentId: newStudent.email,
+        displayName: newStudent.name,
+        email: newStudent.email,
+        tempPassword: Math.random().toString(36).slice(-8),
+      })
+      setStudents(prev => [...prev, { id: `stu-${Date.now()}`, ...newStudent, projects: 0, status: 'pending', joined: new Date().toISOString().slice(0, 10) }])
+      setNewStudent({ name: '', email: '', grade: '' })
+      setShowNewStudent(false)
+      showToast(`Account created for ${newStudent.name}`, 'success')
+    } catch (err) {
+      showToast(err?.message || 'Failed to create student', 'error')
+    }
   }
 
   const STATUS_PILL = {
@@ -240,6 +274,7 @@ function InstructorDashboard({ userName, navigate, showToast }) {
         role="Instructor"
         navigate={navigate}
         badge={pendingCount > 0 ? { key: 'projects', count: pendingCount } : null}
+        onLogout={onLogout}
       />
 
       {sidebarOpen && <div className="fixed inset-0 z-30 bg-surface/60 lg:hidden" onClick={() => setSidebarOpen(false)} />}
@@ -457,7 +492,7 @@ function InstructorDashboard({ userName, navigate, showToast }) {
 
         {/* ── INSTRUCTOR ANALYTICS ── */}
         {activeSection === 'analytics' && (
-          <AnalyticsSection lineData={lineData} doughnutData={doughnutData} classWide />
+          <AnalyticsSection lineData={lineData} doughnutData={doughnutData} projects={projects} classWide />
         )}
 
         {activeSection === 'settings' && (
@@ -522,7 +557,7 @@ function InstructorDashboard({ userName, navigate, showToast }) {
 }
 
 // ─── SHARED SUB-COMPONENTS ─────────────────────────────────────────────────
-function Sidebar({ navItems, activeSection, setActiveSection, sidebarOpen, setSidebarOpen, userName, initial, role, navigate, badge }) {
+function Sidebar({ navItems, activeSection, setActiveSection, sidebarOpen, setSidebarOpen, userName, initial, role, navigate, badge, onLogout }) {
   return (
     <aside
       className={`fixed lg:static inset-y-0 left-0 z-40 w-60 bg-surface-variant border-r border-outline flex flex-col pt-6 pb-4 transition-transform duration-200 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}
@@ -564,7 +599,7 @@ function Sidebar({ navItems, activeSection, setActiveSection, sidebarOpen, setSi
 
       <div className="px-3 pt-4 border-t border-outline">
         <button
-          onClick={() => { localStorage.removeItem('cf_token'); localStorage.removeItem('cf_user'); localStorage.removeItem('cf_role'); navigate('/login') }}
+          onClick={onLogout}
           className="w-full flex items-center gap-3 px-3 py-2.5 font-mono text-xs uppercase tracking-widest text-on-surface-muted hover:text-red-400 transition-colors"
         >
           <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>logout</span>
@@ -608,7 +643,7 @@ function SectionHeader({ label, action, onAction }) {
   )
 }
 
-function UploadSection({ droppedFile, setDroppedFile, dragOver, setDragOver, fileInputRef, handleFile, form, setForm, onSubmit }) {
+function UploadSection({ droppedFile, setDroppedFile, dragOver, setDragOver, fileInputRef, handleFile, form, setForm, onSubmit, uploading, uploadProgress }) {
   return (
     <div className="max-w-xl space-y-6">
       {!droppedFile ? (
@@ -621,7 +656,7 @@ function UploadSection({ droppedFile, setDroppedFile, dragOver, setDragOver, fil
         >
           <span className="material-symbols-outlined text-on-surface-muted mb-3 block" style={{ fontSize: '40px' }}>cloud_upload</span>
           <p className="font-mono text-xs uppercase tracking-widest text-on-surface-muted mb-1">Drop your ZIP file here</p>
-          <p className="font-mono text-[10px] text-on-surface-muted/50">or click to browse — .zip only</p>
+          <p className="font-mono text-[10px] text-on-surface-muted/50">or click to browse (.zip only)</p>
           <input ref={fileInputRef} type="file" accept=".zip" className="hidden" onChange={e => handleFile(e.target.files)} />
         </div>
       ) : (
@@ -675,16 +710,19 @@ function UploadSection({ droppedFile, setDroppedFile, dragOver, setDragOver, fil
             ))}
           </div>
         </div>
-        <button type="submit" className="w-full py-3 bg-accent text-surface font-mono text-xs uppercase tracking-widest hover:bg-accent-dim transition-colors flex items-center justify-center gap-2">
+        <button type="submit" disabled={uploading || !droppedFile}
+          className="w-full py-3 bg-accent text-surface font-mono text-xs uppercase tracking-widest hover:bg-accent-dim transition-colors flex items-center justify-center gap-2 disabled:opacity-60">
           <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>rocket_launch</span>
-          Deploy Project
+          {uploading ? `Uploading... ${uploadProgress}%` : 'Deploy Project'}
         </button>
       </form>
     </div>
   )
 }
 
-function AnalyticsSection({ lineData, doughnutData, classWide }) {
+function AnalyticsSection({ lineData, doughnutData, projects = [], classWide }) {
+  const sorted = [...projects].sort((a, b) => (b.viewCount ?? b.views ?? 0) - (a.viewCount ?? a.views ?? 0)).slice(0, 4)
+  const maxViews = sorted[0]?.viewCount ?? sorted[0]?.views ?? 1
   return (
     <div className="space-y-8 max-w-3xl">
       <div className="card p-6">
@@ -696,20 +734,27 @@ function AnalyticsSection({ lineData, doughnutData, classWide }) {
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
         <div className="card p-6">
           <p className="font-mono text-[10px] uppercase tracking-widest text-on-surface-muted mb-4">Projects by Subject</p>
-          <Doughnut data={doughnutData} options={doughnutOptions} />
+          {doughnutData.labels.length > 0
+            ? <Doughnut data={doughnutData} options={doughnutOptions} />
+            : <p className="font-mono text-xs text-on-surface-muted">No data yet</p>
+          }
         </div>
         <div className="card p-6 space-y-3">
           <p className="font-mono text-[10px] uppercase tracking-widest text-on-surface-muted mb-4">Top Projects</p>
-          {[...mockProjects].sort((a, b) => b.views - a.views).slice(0, 4).map((p, i) => (
-            <div key={p.id} className="flex items-center gap-3">
-              <span className="font-mono text-[10px] text-on-surface-muted w-4">{i + 1}</span>
-              <div className="flex-1 min-w-0">
-                <p className="font-mono text-xs text-on-surface truncate">{p.title}</p>
-                <div className="h-0.5 bg-accent/30 mt-1" style={{ width: `${(p.views / 317) * 100}%` }} />
+          {sorted.length === 0 && <p className="font-mono text-xs text-on-surface-muted">No projects yet</p>}
+          {sorted.map((p, i) => {
+            const views = p.viewCount ?? p.views ?? 0
+            return (
+              <div key={p.projectId ?? p.id} className="flex items-center gap-3">
+                <span className="font-mono text-[10px] text-on-surface-muted w-4">{i + 1}</span>
+                <div className="flex-1 min-w-0">
+                  <p className="font-mono text-xs text-on-surface truncate">{p.title}</p>
+                  <div className="h-0.5 bg-accent/30 mt-1" style={{ width: `${(views / maxViews) * 100}%` }} />
+                </div>
+                <span className="font-mono text-xs text-accent">{views}</span>
               </div>
-              <span className="font-mono text-xs text-accent">{p.views}</span>
-            </div>
-          ))}
+            )
+          })}
         </div>
       </div>
     </div>
@@ -717,6 +762,23 @@ function AnalyticsSection({ lineData, doughnutData, classWide }) {
 }
 
 function SettingsSection({ userName, showToast, isInstructor }) {
+  const auth = useAuth()
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+
+  async function handlePasswordReset(e) {
+    e.preventDefault()
+    if (newPassword !== confirmPassword) { showToast('Passwords do not match', 'error'); return }
+    try {
+      await auth.resetPassword({ newPassword })
+      showToast('Password updated', 'success')
+      setNewPassword('')
+      setConfirmPassword('')
+    } catch (err) {
+      showToast(err?.message || 'Failed to update password', 'error')
+    }
+  }
+
   return (
     <div className="max-w-md space-y-6">
       <div className="card p-6 space-y-4">
@@ -737,6 +799,19 @@ function SettingsSection({ userName, showToast, isInstructor }) {
           Save Changes
         </button>
       </div>
+      <div className="card p-6 space-y-4">
+        <p className="font-mono text-[10px] uppercase tracking-widest text-on-surface-muted border-b border-outline pb-2">Change Password</p>
+        <form onSubmit={handlePasswordReset} className="space-y-3">
+          <input type="password" required placeholder="New password" value={newPassword} onChange={e => setNewPassword(e.target.value)}
+            className="w-full bg-surface border border-outline px-3 py-2.5 font-mono text-sm text-on-surface placeholder:text-on-surface-muted/50 focus:outline-none focus:border-accent transition-colors" />
+          <input type="password" required placeholder="Confirm new password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)}
+            className="w-full bg-surface border border-outline px-3 py-2.5 font-mono text-sm text-on-surface placeholder:text-on-surface-muted/50 focus:outline-none focus:border-accent transition-colors" />
+          <button type="submit" disabled={auth.loading}
+            className="px-6 py-2 bg-accent text-surface font-mono text-xs uppercase tracking-widest hover:bg-accent-dim transition-colors disabled:opacity-60">
+            {auth.loading ? 'Saving...' : 'Update Password'}
+          </button>
+        </form>
+      </div>
       {!isInstructor && (
         <div className="card p-6 space-y-3">
           <p className="font-mono text-[10px] uppercase tracking-widest text-on-surface-muted border-b border-outline pb-2">Danger Zone</p>
@@ -753,24 +828,80 @@ function SettingsSection({ userName, showToast, isInstructor }) {
 export default function Dashboard() {
   const navigate = useNavigate()
   const showToast = useToast()
+  const auth = useAuth()
+  const [searchParams] = useSearchParams()
 
   useEffect(() => {
-    if (!localStorage.getItem('cf_token')) navigate('/login?redirect=/dashboard')
-  }, [navigate])
+    if (!auth.loading && !auth.user) navigate('/login?redirect=/dashboard')
+  }, [auth.loading, auth.user, navigate])
 
-  const userName = localStorage.getItem('cf_user') || 'Student'
-  const isInstructor = localStorage.getItem('cf_role') === 'instructor'
+  const userName = auth.user?.displayName || localStorage.getItem('cf_user') || 'Student'
+  const isInstructor = auth.user?.role === 'instructor'
+
+  function handleLogout() {
+    auth.logout()
+    navigate('/login')
+  }
+
+  if (auth.loading) {
+    return (
+      <>
+        <BlobCanvas />
+        <div className="relative z-10 min-h-screen flex items-center justify-center">
+          <p className="font-mono text-xs text-on-surface-muted uppercase tracking-widest animate-pulse">Loading...</p>
+        </div>
+      </>
+    )
+  }
 
   return (
     <>
       <BlobCanvas />
       <div className="relative z-10 min-h-screen flex flex-col">
         <Header />
-        {isInstructor
-          ? <InstructorDashboard userName={userName} navigate={navigate} showToast={showToast} />
-          : <StudentDashboard    userName={userName} navigate={navigate} showToast={showToast} />
+        {auth.mustResetPassword || searchParams.get('forceReset') === 'true' ? (
+          <ForceResetModal auth={auth} onDone={() => navigate('/dashboard')} showToast={showToast} />
+        ) : isInstructor
+          ? <InstructorDashboard userName={userName} navigate={navigate} showToast={showToast} onLogout={handleLogout} />
+          : <StudentDashboard    userName={userName} navigate={navigate} showToast={showToast} onLogout={handleLogout} />
         }
       </div>
     </>
+  )
+}
+
+function ForceResetModal({ auth, onDone, showToast }) {
+  const [newPassword, setNewPassword] = useState('')
+  const [confirm, setConfirm] = useState('')
+  async function handleSubmit(e) {
+    e.preventDefault()
+    if (newPassword !== confirm) { showToast('Passwords do not match', 'error'); return }
+    try {
+      await auth.resetPassword({ newPassword })
+      showToast('Password updated!', 'success')
+      onDone()
+    } catch (err) {
+      showToast(err?.message || 'Failed to reset password', 'error')
+    }
+  }
+  return (
+    <div className="fixed inset-0 z-50 bg-surface/80 flex items-center justify-center px-4">
+      <div className="bg-surface-raised border border-outline p-8 w-full max-w-sm space-y-6">
+        <div>
+          <p className="font-serif italic text-2xl text-on-surface mb-1">Set a new password</p>
+          <p className="font-mono text-xs text-on-surface-muted">You must change your temporary password before continuing.</p>
+        </div>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <input type="password" required placeholder="New password" value={newPassword} onChange={e => setNewPassword(e.target.value)}
+            className="w-full bg-surface border border-outline px-3 py-2.5 font-mono text-sm text-on-surface placeholder:text-on-surface-muted/50 focus:outline-none focus:border-accent" />
+          <input type="password" required placeholder="Confirm password" value={confirm} onChange={e => setConfirm(e.target.value)}
+            className="w-full bg-surface border border-outline px-3 py-2.5 font-mono text-sm text-on-surface placeholder:text-on-surface-muted/50 focus:outline-none focus:border-accent" />
+          <button type="submit" disabled={auth.loading}
+            className="w-full py-3 bg-accent text-surface font-mono text-xs uppercase tracking-widest hover:bg-accent-dim transition-colors disabled:opacity-60">
+            {auth.loading ? 'Saving...' : 'Set Password'}
+          </button>
+        </form>
+      </div>
+    </div>
   )
 }

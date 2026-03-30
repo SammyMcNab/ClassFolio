@@ -7,7 +7,7 @@ export default function Footer() {
           <span className="text-on-surface">Folio</span>
         </span>
         <p className="font-mono text-[10px] uppercase tracking-widest text-on-surface-muted">
-          © 2026 ClassFolio — Student Project Gallery
+          © 2026 ClassFolio · Student Project Gallery
         </p>
         <div className="flex gap-2 items-center">
           <div className="w-1.5 h-1.5 bg-accent rounded-full" />
