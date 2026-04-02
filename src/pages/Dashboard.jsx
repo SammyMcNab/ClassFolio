@@ -204,13 +204,14 @@ function StudentDashboard({ userName, navigate, showToast, onLogout }) {
 function InstructorDashboard({ userName, navigate, showToast, onLogout }) {
   const auth = useAuth()
   const { projects, updateStatus } = useInstructorProjects()
-  const { students, removeStudent, resetStudentPassword, setStudents } = useStudents()
+  const { students, removeStudent, resetStudentPassword, tempPasswords, rememberTempPassword, clearTempPassword, setStudents } = useStudents()
   const { summary } = useAnalyticsSummary('instructor')
   const [activeSection, setActiveSection] = useState('overview')
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [showNewStudent, setShowNewStudent] = useState(false)
   const [newStudent, setNewStudent] = useState({ studentId: '', name: '', email: '' })
   const [filterStatus, setFilterStatus] = useState('all')
+  const [revealedPasswords, setRevealedPasswords] = useState({})
 
   const projectCountByStudent = projects.reduce((acc, p) => {
     const sid = p.studentId ?? p.student
@@ -258,6 +259,7 @@ function InstructorDashboard({ userName, navigate, showToast, onLogout }) {
         tempPassword: Math.random().toString(36).slice(-8),
       })
       const tempPw = data?.tempPassword ?? data?.password
+      if (tempPw) rememberTempPassword(newStudent.studentId, tempPw)
       setStudents(prev => [...prev, {
         studentId: newStudent.studentId,
         id: newStudent.studentId,
@@ -398,6 +400,7 @@ function InstructorDashboard({ userName, navigate, showToast, onLogout }) {
                     <th className="text-left py-2 pr-4">Projects</th>
                     <th className="text-left py-2 pr-4">Joined</th>
                     <th className="text-left py-2 pr-4">Status</th>
+                    <th className="text-left py-2 pr-4">Temp PW</th>
                     <th className="text-left py-2">Actions</th>
                   </tr>
                 </thead>
@@ -425,8 +428,35 @@ function InstructorDashboard({ userName, navigate, showToast, onLogout }) {
                           {s.status}
                         </span>
                       </td>
+                      <td className="py-3 pr-4">
+                        {(() => {
+                          const sid = s.studentId ?? s.id
+                          const entry = tempPasswords[sid]
+                          if (!entry) return <span className="text-on-surface-muted/50">Not saved</span>
+                          const revealed = revealedPasswords[sid]
+                          return (
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-on-surface">{revealed ? entry.password : '••••••••'}</span>
+                              <button
+                                onClick={() => setRevealedPasswords(prev => ({ ...prev, [sid]: !prev[sid] }))}
+                                className="text-on-surface-muted hover:text-accent transition-colors"
+                                title={revealed ? 'Hide' : 'View'}
+                              >
+                                <span className="material-symbols-outlined" style={{ fontSize: '13px' }}>{revealed ? 'visibility_off' : 'visibility'}</span>
+                              </button>
+                              <button
+                                onClick={() => navigator.clipboard.writeText(entry.password).then(() => showToast('Password copied', 'success'))}
+                                className="text-on-surface-muted hover:text-accent transition-colors"
+                                title="Copy"
+                              >
+                                <span className="material-symbols-outlined" style={{ fontSize: '13px' }}>content_copy</span>
+                              </button>
+                            </div>
+                          )
+                        })()}
+                      </td>
                       <td className="py-3">
-                        <div className="flex gap-2">
+                        <div className="flex gap-2 flex-wrap">
                           <button
                             onClick={async () => {
                               try {
@@ -454,6 +484,19 @@ function InstructorDashboard({ userName, navigate, showToast, onLogout }) {
                           >
                             Remove
                           </button>
+                          {tempPasswords[s.studentId ?? s.id] && (
+                            <button
+                              onClick={() => {
+                                const sid = s.studentId ?? s.id
+                                clearTempPassword(sid)
+                                setRevealedPasswords(prev => { const n = { ...prev }; delete n[sid]; return n })
+                                showToast(`Stored temporary password cleared for ${s.name}`, 'info')
+                              }}
+                              className="text-[10px] font-mono uppercase tracking-widest text-on-surface-muted hover:text-amber-400 border border-outline hover:border-amber-800 px-2 py-1 transition-colors"
+                            >
+                              Clear PW
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -578,7 +621,7 @@ function InstructorDashboard({ userName, navigate, showToast, onLogout }) {
                 </div>
               ))}
               <p className="font-mono text-[10px] text-on-surface-muted">
-                The temporary password will be shown once after creation — share it directly with the student.
+                The temporary password is stored only in this browser so you can view it later.
               </p>
               <div className="flex gap-3 pt-2">
                 <button
