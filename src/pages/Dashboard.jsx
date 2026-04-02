@@ -12,6 +12,9 @@ import ProjectCard from '../components/ProjectCard'
 import { useToast } from '../components/Toast'
 import { useAuth } from '../contexts/AuthContext'
 import { useProjects } from '../hooks/useProjects'
+import { useAnalyticsSummary } from '../hooks/useAnalyticsSummary'
+import { useStudents } from '../hooks/useStudents'
+import { useInstructorProjects } from '../hooks/useInstructorProjects'
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, ArcElement, Tooltip, Legend, Filler)
 
@@ -69,6 +72,7 @@ const doughnutOptions = {
 // ─── STUDENT VIEW ──────────────────────────────────────────────────────────
 function StudentDashboard({ userName, navigate, showToast, onLogout }) {
   const { projects, uploading, uploadProgress, uploadAndDeploy, deleteProject } = useProjects()
+  const { summary } = useAnalyticsSummary('self')
   const [activeSection, setActiveSection] = useState('overview')
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const fileInputRef = useRef(null)
@@ -94,6 +98,9 @@ function StudentDashboard({ userName, navigate, showToast, onLogout }) {
         file: droppedFile,
         title: form.title,
         description: form.description,
+        subject: form.subject,
+        grade: form.grade,
+        visibility: form.visibility,
       })
       showToast(`Deployed! ${publicUrl}`, 'success')
       setDroppedFile(null)
@@ -108,9 +115,11 @@ function StudentDashboard({ userName, navigate, showToast, onLogout }) {
     acc[p.subject || 'Other'] = (acc[p.subject || 'Other'] || 0) + 1
     return acc
   }, {})
+  const lineLabels = summary?.timeseries?.map(t => t.label ?? t.date?.slice(5)) ?? ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
+  const lineValues = summary?.timeseries?.map(t => t.views ?? t.count ?? 0) ?? [0,0,0,0,0,0,0]
   const lineData = {
-    labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
-    datasets: [{ data: [0, 0, 0, 0, 0, 0, 0], borderColor: '#e8b84b', backgroundColor: 'rgba(232,184,75,0.08)', tension: 0.4, fill: true, pointBackgroundColor: '#e8b84b', pointRadius: 3, pointHoverRadius: 5 }],
+    labels: lineLabels,
+    datasets: [{ data: lineValues, borderColor: '#e8b84b', backgroundColor: 'rgba(232,184,75,0.08)', tension: 0.4, fill: true, pointBackgroundColor: '#e8b84b', pointRadius: 3, pointHoverRadius: 5 }],
   }
   const doughnutData = {
     labels: Object.keys(subjectCounts),
@@ -143,7 +152,7 @@ function StudentDashboard({ userName, navigate, showToast, onLogout }) {
           <div className="space-y-8">
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
               <StatCard label="My Projects"  value={projects.length} icon="folder_open" sub="Total uploaded" />
-              <StatCard label="Total Views"  value={projects.reduce((s, p) => s + (p.viewCount ?? p.views ?? 0), 0).toLocaleString()} icon="visibility" sub="All time" />
+              <StatCard label="Total Views"  value={(summary?.totalViews ?? projects.reduce((s, p) => s + (p.viewCount ?? p.views ?? 0), 0)).toLocaleString()} icon="visibility" sub="All time" />
               <StatCard label="Top Subject"  value={Object.entries(subjectCounts).sort((a,b)=>b[1]-a[1])[0]?.[0] ?? '—'} icon="palette" sub="Most projects" />
               <StatCard label="Published"    value={projects.filter(p => p.status === 'published').length} icon="public" sub="Live on gallery" />
             </div>
@@ -180,7 +189,7 @@ function StudentDashboard({ userName, navigate, showToast, onLogout }) {
         )}
 
         {activeSection === 'analytics' && (
-          <AnalyticsSection lineData={lineData} doughnutData={doughnutData} projects={projects} />
+          <AnalyticsSection lineData={lineData} doughnutData={doughnutData} projects={projects} topProjects={summary?.topProjects} />
         )}
 
         {activeSection === 'settings' && (
@@ -193,16 +202,21 @@ function StudentDashboard({ userName, navigate, showToast, onLogout }) {
 
 // ─── INSTRUCTOR VIEW ───────────────────────────────────────────────────────
 function InstructorDashboard({ userName, navigate, showToast, onLogout }) {
-  const { projects: rawProjects } = useProjects()
   const auth = useAuth()
+  const { projects, updateStatus } = useInstructorProjects()
+  const { students, removeStudent, resetStudentPassword, setStudents } = useStudents()
+  const { summary } = useAnalyticsSummary('instructor')
   const [activeSection, setActiveSection] = useState('overview')
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const [students, setStudents] = useState([])
-  const [projectStatuses, setProjectStatuses] = useState({})
   const [showNewStudent, setShowNewStudent] = useState(false)
-  const [newStudent, setNewStudent] = useState({ name: '', email: '', grade: '' })
+  const [newStudent, setNewStudent] = useState({ studentId: '', name: '', email: '' })
+  const [filterStatus, setFilterStatus] = useState('all')
 
-  const projects = rawProjects.map(p => ({ ...p, status: projectStatuses[p.projectId ?? p.id] ?? 'approved' }))
+  const projectCountByStudent = projects.reduce((acc, p) => {
+    const sid = p.studentId ?? p.student
+    if (sid) acc[sid] = (acc[sid] || 0) + 1
+    return acc
+  }, {})
 
   const initial = userName.charAt(0)
   const navLabel = INSTRUCTOR_NAV.find(n => n.key === activeSection)?.label
@@ -213,51 +227,65 @@ function InstructorDashboard({ userName, navigate, showToast, onLogout }) {
     acc[p.subject || 'Other'] = (acc[p.subject || 'Other'] || 0) + 1
     return acc
   }, {})
+  const instrLineLabels = summary?.timeseries?.map(t => t.label ?? t.date?.slice(5)) ?? ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
+  const instrLineValues = summary?.timeseries?.map(t => t.views ?? t.count ?? 0) ?? [0,0,0,0,0,0,0]
   const lineData = {
-    labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
-    datasets: [{ data: [0, 0, 0, 0, 0, 0, 0], borderColor: '#60a5fa', backgroundColor: 'rgba(96,165,250,0.08)', tension: 0.4, fill: true, pointBackgroundColor: '#60a5fa', pointRadius: 3, pointHoverRadius: 5 }],
+    labels: instrLineLabels,
+    datasets: [{ data: instrLineValues, borderColor: '#60a5fa', backgroundColor: 'rgba(96,165,250,0.08)', tension: 0.4, fill: true, pointBackgroundColor: '#60a5fa', pointRadius: 3, pointHoverRadius: 5 }],
   }
   const doughnutData = {
     labels: Object.keys(subjectCounts),
     datasets: [{ data: Object.values(subjectCounts), backgroundColor: ['#60a5fa', '#4ade80', '#c084fc', '#f87171', '#fbbf24', '#f472b6'], borderWidth: 0 }],
   }
 
-  function approveProject(id) {
-    setProjectStatuses(prev => ({ ...prev, [id]: 'approved' }))
-    showToast('Project approved and published', 'success')
-  }
-  function rejectProject(id) {
-    setProjectStatuses(prev => ({ ...prev, [id]: 'rejected' }))
-    showToast('Project rejected', 'warning')
-  }
-  function unpublishProject(id) {
-    setProjectStatuses(prev => ({ ...prev, [id]: 'unpublished' }))
-    showToast('Project unpublished', 'info')
+  async function handleModerationAction(projectId, status) {
+    try {
+      await updateStatus(projectId, status)
+      const msgs = { published: 'Project published', rejected: 'Project rejected', unpublished: 'Project unpublished' }
+      showToast(msgs[status] ?? `Status: ${status}`, status === 'rejected' ? 'warning' : status === 'unpublished' ? 'info' : 'success')
+    } catch (err) {
+      showToast(err?.message || 'Action failed', 'error')
+    }
   }
 
-  async function createStudent(e) {
+  async function handleCreateStudent(e) {
     e.preventDefault()
     try {
-      await auth.createStudent({
-        studentId: newStudent.email,
+      const data = await auth.createStudent({
+        studentId: newStudent.studentId,
         displayName: newStudent.name,
         email: newStudent.email,
         tempPassword: Math.random().toString(36).slice(-8),
       })
-      setStudents(prev => [...prev, { id: `stu-${Date.now()}`, ...newStudent, projects: 0, status: 'pending', joined: new Date().toISOString().slice(0, 10) }])
-      setNewStudent({ name: '', email: '', grade: '' })
+      const tempPw = data?.tempPassword ?? data?.password
+      setStudents(prev => [...prev, {
+        studentId: newStudent.studentId,
+        id: newStudent.studentId,
+        name: newStudent.name,
+        displayName: newStudent.name,
+        email: newStudent.email,
+        projects: 0,
+        status: 'pending reset',
+        joined: new Date().toISOString(),
+        mustResetPassword: true,
+      }])
+      setNewStudent({ studentId: '', name: '', email: '' })
       setShowNewStudent(false)
-      showToast(`Account created for ${newStudent.name}`, 'success')
+      if (tempPw) {
+        showToast(`Account created. Temp password: ${tempPw}`, 'success')
+      } else {
+        showToast(`Account created for ${newStudent.name}`, 'success')
+      }
     } catch (err) {
       showToast(err?.message || 'Failed to create student', 'error')
     }
   }
 
   const STATUS_PILL = {
-    approved:   'text-emerald-400 border-emerald-800/40 bg-emerald-900/20',
-    pending:    'text-amber-400  border-amber-800/40  bg-amber-900/20',
-    rejected:   'text-red-400    border-red-800/40    bg-red-900/20',
-    unpublished:'text-zinc-400   border-zinc-700/40   bg-zinc-800/20',
+    published:   'text-emerald-400 border-emerald-800/40 bg-emerald-900/20',
+    pending:     'text-amber-400  border-amber-800/40  bg-amber-900/20',
+    rejected:    'text-red-400    border-red-800/40    bg-red-900/20',
+    unpublished: 'text-zinc-400   border-zinc-700/40   bg-zinc-800/20',
   }
 
   return (
@@ -303,7 +331,7 @@ function InstructorDashboard({ userName, navigate, showToast, onLogout }) {
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
               <StatCard label="Students"       value={students.length}  icon="group"         sub="Enrolled" accent="#60a5fa" />
               <StatCard label="Total Projects" value={projects.length}  icon="folder_special" sub="Across all classes" />
-              <StatCard label="Total Views"    value={projects.reduce((s, p) => s + Math.max(0, p.viewCount ?? p.views ?? 0), 0).toLocaleString()} icon="visibility"    sub="All time" />
+              <StatCard label="Total Views"    value={(summary?.totalViews ?? projects.reduce((s, p) => s + Math.max(0, p.viewCount ?? p.views ?? 0), 0)).toLocaleString()} icon="visibility"    sub="All time" />
               <StatCard label="Pending Review" value={pendingCount}     icon="pending_actions" sub="Need approval" accent={pendingCount > 0 ? '#f87171' : '#4ade80'} />
             </div>
 
@@ -329,7 +357,7 @@ function InstructorDashboard({ userName, navigate, showToast, onLogout }) {
                 <thead>
                   <tr className="border-b border-outline text-on-surface-muted uppercase tracking-widest text-[10px]">
                     <th className="text-left py-2 pr-4">Student</th>
-                    <th className="text-left py-2 pr-4">Grade</th>
+                    <th className="text-left py-2 pr-4">Student ID</th>
                     <th className="text-left py-2 pr-4">Projects</th>
                     <th className="text-left py-2">Status</th>
                   </tr>
@@ -343,8 +371,8 @@ function InstructorDashboard({ userName, navigate, showToast, onLogout }) {
                           <p className="text-on-surface-muted text-[10px]">{s.email}</p>
                         </div>
                       </td>
-                      <td className="py-3 pr-4 text-on-surface-muted">{s.grade}</td>
-                      <td className="py-3 pr-4 text-on-surface">{s.projects}</td>
+                      <td className="py-3 pr-4 text-on-surface-muted">{s.studentId ?? s.id}</td>
+                      <td className="py-3 pr-4 text-on-surface">{projectCountByStudent[s.studentId ?? s.id] ?? s.projects ?? 0}</td>
                       <td className="py-3">
                         <span className={`border px-2 py-0.5 text-[10px] uppercase tracking-widest ${s.status === 'active' ? 'text-emerald-400 border-emerald-800/40 bg-emerald-900/20' : 'text-amber-400 border-amber-800/40 bg-amber-900/20'}`}>
                           {s.status}
@@ -366,7 +394,7 @@ function InstructorDashboard({ userName, navigate, showToast, onLogout }) {
                 <thead>
                   <tr className="border-b border-outline text-on-surface-muted uppercase tracking-widest text-[10px]">
                     <th className="text-left py-2 pr-4">Student</th>
-                    <th className="text-left py-2 pr-4">Grade</th>
+                    <th className="text-left py-2 pr-4">Student ID</th>
                     <th className="text-left py-2 pr-4">Projects</th>
                     <th className="text-left py-2 pr-4">Joined</th>
                     <th className="text-left py-2 pr-4">Status</th>
@@ -387,8 +415,8 @@ function InstructorDashboard({ userName, navigate, showToast, onLogout }) {
                           </div>
                         </div>
                       </td>
-                      <td className="py-3 pr-4 text-on-surface-muted">{s.grade}</td>
-                      <td className="py-3 pr-4 text-on-surface">{s.projects}</td>
+                      <td className="py-3 pr-4 text-on-surface-muted">{s.studentId ?? s.id}</td>
+                      <td className="py-3 pr-4 text-on-surface">{projectCountByStudent[s.studentId ?? s.id] ?? s.projects ?? 0}</td>
                       <td className="py-3 pr-4 text-on-surface-muted">
                         {new Date(s.joined).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                       </td>
@@ -400,13 +428,28 @@ function InstructorDashboard({ userName, navigate, showToast, onLogout }) {
                       <td className="py-3">
                         <div className="flex gap-2">
                           <button
-                            onClick={() => showToast(`Password reset sent to ${s.email}`, 'info')}
+                            onClick={async () => {
+                              try {
+                                const data = await resetStudentPassword(s.studentId ?? s.id)
+                                const tempPw = data?.tempPassword ?? data?.password ?? '(check backend)'
+                                showToast(`Temp password for ${s.name}: ${tempPw}`, 'success')
+                              } catch (err) {
+                                showToast(err?.message || 'Reset failed', 'error')
+                              }
+                            }}
                             className="text-[10px] font-mono uppercase tracking-widest text-on-surface-muted hover:text-accent border border-outline hover:border-accent px-2 py-1 transition-colors"
                           >
                             Reset PW
                           </button>
                           <button
-                            onClick={() => { setStudents(prev => prev.filter(x => x.id !== s.id)); showToast(`${s.name} removed`, 'warning') }}
+                            onClick={async () => {
+                              try {
+                                await removeStudent(s.studentId ?? s.id)
+                                showToast(`${s.name} removed`, 'warning')
+                              } catch (err) {
+                                showToast(err?.message || 'Remove failed', 'error')
+                              }
+                            }}
                             className="text-[10px] font-mono uppercase tracking-widest text-on-surface-muted hover:text-red-400 border border-outline hover:border-red-800 px-2 py-1 transition-colors"
                           >
                             Remove
@@ -426,10 +469,15 @@ function InstructorDashboard({ userName, navigate, showToast, onLogout }) {
           <div className="space-y-3">
             {/* Filter tabs */}
             <div className="flex gap-2 mb-6">
-              {['all', 'approved', 'pending', 'rejected', 'unpublished'].map(f => (
+              {['all', 'pending', 'published', 'rejected', 'unpublished'].map(f => (
                 <button
                   key={f}
-                  className="font-mono text-[10px] uppercase tracking-widest px-3 py-1.5 border border-outline text-on-surface-muted hover:border-silver hover:text-on-surface transition-colors"
+                  onClick={() => setFilterStatus(f)}
+                  className={`font-mono text-[10px] uppercase tracking-widest px-3 py-1.5 border transition-colors ${
+                    filterStatus === f
+                      ? 'border-accent text-accent bg-accent/5'
+                      : 'border-outline text-on-surface-muted hover:border-silver hover:text-on-surface'
+                  }`}
                 >
                   {f}
                 </button>
@@ -437,7 +485,7 @@ function InstructorDashboard({ userName, navigate, showToast, onLogout }) {
             </div>
 
             <div className="space-y-2">
-              {projects.map(p => (
+              {(filterStatus === 'all' ? projects : projects.filter(p => p.status === filterStatus)).map(p => (
                 <div key={p.id} className="card p-4 flex items-center gap-4">
                   <div className="w-12 h-12 bg-surface-variant flex items-center justify-center flex-shrink-0">
                     <span className="font-serif italic text-xl text-on-surface-muted/30">{p.title.charAt(0)}</span>
@@ -450,31 +498,31 @@ function InstructorDashboard({ userName, navigate, showToast, onLogout }) {
                     <span className="font-mono text-[10px] text-on-surface-muted hidden sm:block">
                       {p.views} views
                     </span>
-                    <span className={`border px-2 py-0.5 font-mono text-[10px] uppercase tracking-widest hidden sm:block ${STATUS_PILL[p.status] || STATUS_PILL.approved}`}>
+                    <span className={`border px-2 py-0.5 font-mono text-[10px] uppercase tracking-widest hidden sm:block ${STATUS_PILL[p.status] || STATUS_PILL.pending}`}>
                       {p.status}
                     </span>
                     <div className="flex gap-1">
-                      {p.status !== 'approved' && (
+                      {p.status !== 'published' && (
                         <button
-                          onClick={() => approveProject(p.id)}
+                          onClick={() => handleModerationAction(p.id ?? p.projectId, 'published')}
                           className="font-mono text-[10px] uppercase px-2 py-1.5 border border-emerald-800/50 text-emerald-400 hover:bg-emerald-900/20 transition-colors"
-                          title="Approve"
+                          title="Publish"
                         >
                           <span className="material-symbols-outlined" style={{ fontSize: '12px' }}>check</span>
                         </button>
                       )}
                       {p.status !== 'rejected' && (
                         <button
-                          onClick={() => rejectProject(p.id)}
+                          onClick={() => handleModerationAction(p.id ?? p.projectId, 'rejected')}
                           className="font-mono text-[10px] uppercase px-2 py-1.5 border border-red-800/50 text-red-400 hover:bg-red-900/20 transition-colors"
                           title="Reject"
                         >
                           <span className="material-symbols-outlined" style={{ fontSize: '12px' }}>close</span>
                         </button>
                       )}
-                      {p.status === 'approved' && (
+                      {p.status === 'published' && (
                         <button
-                          onClick={() => unpublishProject(p.id)}
+                          onClick={() => handleModerationAction(p.id ?? p.projectId, 'unpublished')}
                           className="font-mono text-[10px] uppercase px-2 py-1.5 border border-outline text-on-surface-muted hover:border-silver transition-colors"
                           title="Unpublish"
                         >
@@ -491,7 +539,7 @@ function InstructorDashboard({ userName, navigate, showToast, onLogout }) {
 
         {/* ── INSTRUCTOR ANALYTICS ── */}
         {activeSection === 'analytics' && (
-          <AnalyticsSection lineData={lineData} doughnutData={doughnutData} projects={projects} classWide />
+          <AnalyticsSection lineData={lineData} doughnutData={doughnutData} projects={projects} topProjects={summary?.topProjects} classWide />
         )}
 
         {activeSection === 'settings' && (
@@ -509,11 +557,11 @@ function InstructorDashboard({ userName, navigate, showToast, onLogout }) {
                 <span className="material-symbols-outlined">close</span>
               </button>
             </div>
-            <form onSubmit={createStudent} className="space-y-4">
+            <form onSubmit={handleCreateStudent} className="space-y-4">
               {[
-                { label: 'Full Name', key: 'name', placeholder: 'e.g. Alex Thompson' },
-                { label: 'School Email', key: 'email', placeholder: 'alex.t@school.edu', type: 'email' },
-                { label: 'Grade Level', key: 'grade', placeholder: 'e.g. 9th Grade' },
+                { label: 'Full Name',   key: 'name',      placeholder: 'e.g. Alex Thompson' },
+                { label: 'Student ID',  key: 'studentId', placeholder: 'e.g. s12345' },
+                { label: 'School Email',key: 'email',     placeholder: 'alex.t@school.edu', type: 'email' },
               ].map(field => (
                 <div key={field.key}>
                   <label className="font-mono text-[10px] uppercase tracking-widest text-on-surface-muted block mb-1.5">
@@ -530,7 +578,7 @@ function InstructorDashboard({ userName, navigate, showToast, onLogout }) {
                 </div>
               ))}
               <p className="font-mono text-[10px] text-on-surface-muted">
-                A temporary password will be emailed to the student. They'll reset it on first login.
+                The temporary password will be shown once after creation — share it directly with the student.
               </p>
               <div className="flex gap-3 pt-2">
                 <button
@@ -719,8 +767,10 @@ function UploadSection({ droppedFile, setDroppedFile, dragOver, setDragOver, fil
   )
 }
 
-function AnalyticsSection({ lineData, doughnutData, projects = [], classWide }) {
-  const sorted = [...projects].sort((a, b) => (b.viewCount ?? b.views ?? 0) - (a.viewCount ?? a.views ?? 0)).slice(0, 4)
+function AnalyticsSection({ lineData, doughnutData, projects = [], topProjects, classWide }) {
+  const sorted = topProjects
+    ? topProjects.slice(0, 4)
+    : [...projects].sort((a, b) => (b.viewCount ?? b.views ?? 0) - (a.viewCount ?? a.views ?? 0)).slice(0, 4)
   const maxViews = sorted[0]?.viewCount ?? sorted[0]?.views ?? 1
   return (
     <div className="space-y-8 max-w-3xl">
@@ -794,7 +844,7 @@ function SettingsSection({ userName, showToast, isInstructor }) {
             </select>
           </div>
         )}
-        <button onClick={() => showToast('Settings saved', 'success')} className="px-6 py-2 bg-accent text-surface font-mono text-xs uppercase tracking-widest hover:bg-accent-dim transition-colors">
+        <button onClick={() => showToast('Profile updates are not yet connected to the backend', 'info')} className="px-6 py-2 bg-accent text-surface font-mono text-xs uppercase tracking-widest hover:bg-accent-dim transition-colors">
           Save Changes
         </button>
       </div>
@@ -814,7 +864,7 @@ function SettingsSection({ userName, showToast, isInstructor }) {
       {!isInstructor && (
         <div className="card p-6 space-y-3">
           <p className="font-mono text-[10px] uppercase tracking-widest text-on-surface-muted border-b border-outline pb-2">Danger Zone</p>
-          <button onClick={() => showToast('Account deletion request sent to instructor', 'warning')} className="w-full py-2.5 border border-red-900/50 font-mono text-xs uppercase tracking-widest text-red-400 hover:bg-red-900/10 transition-colors">
+          <button onClick={() => showToast('Contact your instructor to request account removal', 'info')} className="w-full py-2.5 border border-red-900/50 font-mono text-xs uppercase tracking-widest text-red-400 hover:bg-red-900/10 transition-colors">
             Request Account Deletion
           </button>
         </div>
