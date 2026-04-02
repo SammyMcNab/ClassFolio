@@ -52,7 +52,7 @@ const lineOptions = {
   plugins: { legend: { display: false } },
   scales: {
     x: { grid: { color: '#1a1a22' }, ticks: { color: '#8b8b99', font: { family: 'JetBrains Mono', size: 10 } } },
-    y: { grid: { color: '#1a1a22' }, ticks: { color: '#8b8b99', font: { family: 'JetBrains Mono', size: 10 } } },
+    y: { min: 0, grid: { color: '#1a1a22' }, ticks: { color: '#8b8b99', font: { family: 'JetBrains Mono', size: 10 }, precision: 0 } },
   },
 }
 const doughnutOptions = {
@@ -142,16 +142,15 @@ function StudentDashboard({ userName, navigate, showToast, onLogout }) {
         {activeSection === 'overview' && (
           <div className="space-y-8">
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              <StatCard label="My Projects" value={projects.length} icon="folder_open" sub="Published" />
+              <StatCard label="My Projects"  value={projects.length} icon="folder_open" sub="Total uploaded" />
               <StatCard label="Total Views"  value={projects.reduce((s, p) => s + (p.viewCount ?? p.views ?? 0), 0).toLocaleString()} icon="visibility" sub="All time" />
               <StatCard label="Top Subject"  value={Object.entries(subjectCounts).sort((a,b)=>b[1]-a[1])[0]?.[0] ?? '—'} icon="palette" sub="Most projects" />
-              <StatCard label="Projects"    value={projects.length} icon="trending_up" sub="Deployed" />
+              <StatCard label="Published"    value={projects.filter(p => p.status === 'published').length} icon="public" sub="Live on gallery" />
             </div>
             <SectionHeader label="Recent Projects" action="View all →" onAction={() => setActiveSection('projects')} />
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {projects.slice(0, 3).map(p => (
                 <ProjectCard key={p.projectId ?? p.id} project={p} showActions
-                  onEdit={() => showToast(`Editing '${p.title}' (coming soon)`, 'info')}
                   onDelete={async () => { await deleteProject(p.projectId ?? p.id); showToast(`"${p.title}" deleted`, 'warning') }}
                 />
               ))}
@@ -304,7 +303,7 @@ function InstructorDashboard({ userName, navigate, showToast, onLogout }) {
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
               <StatCard label="Students"       value={students.length}  icon="group"         sub="Enrolled" accent="#60a5fa" />
               <StatCard label="Total Projects" value={projects.length}  icon="folder_special" sub="Across all classes" />
-              <StatCard label="Total Views"    value="9,840"            icon="visibility"    sub="↑ 23% this month" />
+              <StatCard label="Total Views"    value={projects.reduce((s, p) => s + Math.max(0, p.viewCount ?? p.views ?? 0), 0).toLocaleString()} icon="visibility"    sub="All time" />
               <StatCard label="Pending Review" value={pendingCount}     icon="pending_actions" sub="Need approval" accent={pendingCount > 0 ? '#f87171' : '#4ade80'} />
             </div>
 
@@ -557,7 +556,7 @@ function InstructorDashboard({ userName, navigate, showToast, onLogout }) {
 }
 
 // ─── SHARED SUB-COMPONENTS ─────────────────────────────────────────────────
-function Sidebar({ navItems, activeSection, setActiveSection, sidebarOpen, setSidebarOpen, userName, initial, role, navigate, badge, onLogout }) {
+function Sidebar({ navItems, activeSection, setActiveSection, sidebarOpen, setSidebarOpen, userName, initial, role, badge, onLogout }) {
   return (
     <aside
       className={`fixed lg:static inset-y-0 left-0 z-40 w-60 bg-surface-variant border-r border-outline flex flex-col pt-6 pb-4 transition-transform duration-200 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}

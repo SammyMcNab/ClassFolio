@@ -17,7 +17,15 @@ const STATUS_STYLES = {
 }
 
 export default function ProjectCard({ project, showActions, onEdit, onDelete }) {
-  const subjectStyle = SUBJECT_COLORS[project.subject] || SUBJECT_COLORS['Other']
+  const title = project.title || 'Untitled'
+  const subject = project.subject || 'Other'
+  const subjectStyle = SUBJECT_COLORS[subject] || SUBJECT_COLORS['Other']
+  const views = project.views ?? 0
+  const student = project.student ?? ''
+  const grade = project.grade ?? ''
+  const created = project.createdAt ? new Date(project.createdAt) : null
+  const dateOk = created && !Number.isNaN(created.getTime())
+  const projectLinkId = project.id ?? project.projectId
 
   return (
     <article className="card group flex flex-col overflow-hidden">
@@ -26,19 +34,19 @@ export default function ProjectCard({ project, showActions, onEdit, onDelete }) 
         {project.thumbnail ? (
           <img
             src={project.thumbnail}
-            alt={project.title}
+            alt={title}
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center">
             <span className="font-serif italic text-4xl text-on-surface-muted/30">
-              {project.title.charAt(0)}
+              {(title || '?').charAt(0)}
             </span>
           </div>
         )}
         {/* Subject badge overlay */}
         <span className={`absolute top-2 left-2 font-mono text-[10px] uppercase tracking-widest px-2 py-0.5 border ${subjectStyle}`}>
-          {project.subject}
+          {subject}
         </span>
         {project.status && ['draft', 'processing', 'failed'].includes(project.status) && (
           <span
@@ -50,7 +58,7 @@ export default function ProjectCard({ project, showActions, onEdit, onDelete }) 
         {/* View count */}
         <span className="absolute top-2 right-2 font-mono text-[10px] text-on-surface-muted flex items-center gap-1 bg-surface/70 px-2 py-0.5">
           <span className="material-symbols-outlined" style={{ fontSize: '12px' }}>visibility</span>
-          {project.views}
+          {views}
         </span>
       </div>
 
@@ -58,10 +66,11 @@ export default function ProjectCard({ project, showActions, onEdit, onDelete }) 
       <div className="p-4 flex flex-col gap-3 flex-1">
         <div>
           <h3 className="font-serif italic text-lg leading-tight text-on-surface group-hover:text-accent transition-colors line-clamp-2">
-            {project.title}
+            {title}
           </h3>
           <p className="font-mono text-xs text-on-surface-muted mt-1">
-            {project.student} · {project.grade}
+            {student}
+            {grade ? ` · ${grade}` : ''}
           </p>
         </div>
 
@@ -73,32 +82,54 @@ export default function ProjectCard({ project, showActions, onEdit, onDelete }) 
 
         <div className="mt-auto flex items-center justify-between pt-2 border-t border-outline">
           <span className="font-mono text-[10px] text-on-surface-muted">
-            {new Date(project.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+            {dateOk ? created.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
           </span>
 
           {showActions ? (
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2 justify-end max-w-[min(100%,14rem)]">
+              {project.publicUrl && (
+                <a
+                  href={project.publicUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-mono text-[10px] uppercase tracking-wider text-accent hover:text-accent-dim transition-colors px-2 py-1 border border-accent/40 hover:border-accent"
+                >
+                  Open site
+                </a>
+              )}
+              {projectLinkId && (
+                <Link
+                  to={`/project/${projectLinkId}`}
+                  className="font-mono text-[10px] uppercase tracking-wider text-on-surface-muted hover:text-accent transition-colors px-2 py-1 border border-outline hover:border-accent"
+                >
+                  View
+                </Link>
+              )}
               <button
+                type="button"
                 onClick={() => onEdit?.(project)}
                 className="font-mono text-[10px] uppercase tracking-wider text-on-surface-muted hover:text-accent transition-colors px-2 py-1 border border-outline hover:border-accent"
               >
                 Edit
               </button>
               <button
+                type="button"
                 onClick={() => onDelete?.(project)}
                 className="font-mono text-[10px] uppercase tracking-wider text-on-surface-muted hover:text-red-400 transition-colors px-2 py-1 border border-outline hover:border-red-700"
               >
                 Delete
               </button>
             </div>
-          ) : (
+          ) : projectLinkId ? (
             <Link
-              to={`/project/${project.id}`}
+              to={`/project/${projectLinkId}`}
               className="font-mono text-[10px] uppercase tracking-widest text-accent flex items-center gap-1 hover:gap-2 transition-all"
             >
               View
               <span className="material-symbols-outlined" style={{ fontSize: '12px' }}>arrow_forward</span>
             </Link>
+          ) : (
+            <span className="font-mono text-[10px] text-on-surface-muted">No link</span>
           )}
         </div>
       </div>

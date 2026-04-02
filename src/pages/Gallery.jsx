@@ -13,13 +13,16 @@ export default function Gallery() {
   const [activeSubject, setActiveSubject] = useState('All')
 
   const filtered = useMemo(() => {
+    const q = (v) => (v == null ? '' : String(v)).toLowerCase()
+    const needle = search.toLowerCase()
     return projects.filter(p => {
+      if (!p) return false
       const matchSubject = activeSubject === 'All' || p.subject === activeSubject
       const matchSearch =
         !search ||
-        p.title.toLowerCase().includes(search.toLowerCase()) ||
-        p.student.toLowerCase().includes(search.toLowerCase()) ||
-        p.subject.toLowerCase().includes(search.toLowerCase())
+        q(p.title).includes(needle) ||
+        q(p.student).includes(needle) ||
+        q(p.subject).includes(needle)
       return matchSubject && matchSearch
     })
   }, [projects, search, activeSubject])

@@ -9,9 +9,13 @@ async function request(method, path, { body, auth = true, signal } = {}) {
 
   const headers = {}
   if (body !== undefined) headers['Content-Type'] = 'application/json'
+  let sentBearer = false
   if (auth) {
     const token = localStorage.getItem('cf_token')
-    if (token) headers['Authorization'] = `Bearer ${token}`
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`
+      sentBearer = true
+    }
   }
 
   const response = await fetch(`${BASE_URL}${path}`, {
@@ -22,7 +26,8 @@ async function request(method, path, { body, auth = true, signal } = {}) {
   })
 
   if (!response.ok) {
-    if (response.status === 401) {
+    // Wrong password on /auth/login also returns 401 — do not nuke session unless we sent a token.
+    if (response.status === 401 && sentBearer) {
       window.dispatchEvent(new Event('auth:unauthorized'))
     }
     let errorBody
@@ -31,10 +36,16 @@ async function request(method, path, { body, auth = true, signal } = {}) {
     } catch {
       errorBody = { message: `Request failed with status ${response.status}` }
     }
-    throw errorBody
+    throw { ...errorBody, status: response.status }
   }
 
-  return response.json()
+  const text = await response.text()
+  if (!text) return {}
+  try {
+    return JSON.parse(text)
+  } catch {
+    return { raw: text }
+  }
 }
 
 export const get  = (path, opts) => request('GET',    path, opts)

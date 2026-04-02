@@ -42,7 +42,7 @@ export default function Login() {
   const navigate = useNavigate()
   const auth = useAuth()
   const [tab, setTab] = useState('student')
-  const [email, setEmail] = useState('')
+  const [loginId, setLoginId] = useState('')
   const [password, setPassword] = useState('')
   const [showPw, setShowPw] = useState(false)
 
@@ -54,7 +54,7 @@ export default function Login() {
   async function handleSubmit(e) {
     e.preventDefault()
     try {
-      const { mustResetPassword } = await auth.login({ studentId: email, password, role: tab })
+      const { mustResetPassword } = await auth.login({ studentId: loginId.trim(), password, role: tab })
       if (mustResetPassword) {
         navigate('/dashboard?forceReset=true')
       } else {
@@ -150,14 +150,16 @@ export default function Login() {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="font-mono text-[10px] uppercase tracking-widest text-on-surface-muted block mb-1.5">
-                Email
+                Username or email
               </label>
               <input
-                type="email"
-                value={email}
-                onChange={e => setEmail(e.target.value)}
+                type="text"
+                name="username"
+                autoComplete="username"
+                value={loginId}
+                onChange={e => setLoginId(e.target.value)}
                 required
-                placeholder={tab === 'student' ? 'student@demo.com' : 'instructor@demo.com'}
+                placeholder={tab === 'student' ? 'student ID or email' : 'instructor@school.edu'}
                 className="w-full bg-surface border border-outline px-3 py-2.5 font-mono text-sm text-on-surface placeholder:text-on-surface-muted/50 focus:outline-none focus:border-accent transition-colors"
               />
             </div>
@@ -169,6 +171,8 @@ export default function Login() {
               <div className="relative">
                 <input
                   type={showPw ? 'text' : 'password'}
+                  name="password"
+                  autoComplete="current-password"
                   value={password}
                   onChange={e => setPassword(e.target.value)}
                   required
@@ -199,7 +203,11 @@ export default function Login() {
 
             {auth.error && (
               <p className="font-mono text-xs text-red-400 border border-red-900/40 px-3 py-2 bg-red-900/10">
-                {auth.error.message ?? 'Incorrect email or password.'}
+                {typeof auth.error?.message === 'string'
+                  ? auth.error.message
+                  : auth.error?.message != null
+                    ? String(auth.error.message)
+                    : 'Incorrect username or password.'}
               </p>
             )}
 
@@ -222,15 +230,19 @@ export default function Login() {
             </button>
           </form>
 
-          <p className="font-mono text-[11px] text-on-surface-muted text-center">
-            New student?{' '}
-            <span className="text-silver">Ask your instructor to create your account.</span>
-          </p>
+          {tab === 'instructor' ? (
+            <p className="font-mono text-[11px] text-on-surface-muted text-center">
+              No account?{' '}
+              <Link to="/register" className="text-accent hover:underline">Register with a code</Link>
+            </p>
+          ) : (
+            <p className="font-mono text-[11px] text-on-surface-muted text-center">
+              New student?{' '}
+              <span className="text-silver">Ask your instructor to create your account.</span>
+            </p>
+          )}
         </div>
 
-        <p className="text-center font-mono text-[10px] text-on-surface-muted/40 mt-4">
-          Ask your instructor for your login credentials.
-        </p>
       </div>
 
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>

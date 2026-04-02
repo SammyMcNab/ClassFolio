@@ -27,12 +27,21 @@ export function AuthProvider({ children }) {
     setMustResetPassword(false)
   }, [])
 
-  // Verify stored token on mount
+  // Verify stored token on mount (only clear session on 401 — missing/wrong verify route should not sign users out)
   useEffect(() => {
-    if (!localStorage.getItem('cf_token')) return
+    if (!localStorage.getItem('cf_token')) {
+      setLoading(false)
+      return
+    }
     authApi.verifyToken()
-      .then(data => setUser(prev => ({ ...prev, ...data })))
-      .catch(() => logout())
+      .then((data) => {
+        if (data && typeof data === 'object' && !Array.isArray(data)) {
+          setUser(prev => ({ ...prev, ...data }))
+        }
+      })
+      .catch((err) => {
+        if (err?.status === 401) logout()
+      })
       .finally(() => setLoading(false))
   }, [logout])
 
@@ -51,10 +60,14 @@ export function AuthProvider({ children }) {
     setError(null)
     try {
       const data = await authApi.login({ studentId, password })
+      if (!data?.token) {
+        throw { message: 'Login response missing token', status: 502 }
+      }
+      const displayName = data.displayName ?? data.studentId ?? 'Student'
       localStorage.setItem('cf_token', data.token)
-      localStorage.setItem('cf_user', data.displayName)
+      localStorage.setItem('cf_user', displayName)
       localStorage.setItem('cf_role', role)
-      setUser({ studentId: data.studentId, displayName: data.displayName, role })
+      setUser({ studentId: data.studentId, displayName, role })
       if (data.mustResetPassword) setMustResetPassword(true)
       return { mustResetPassword: !!data.mustResetPassword }
     } catch (err) {
@@ -100,5 +113,9 @@ export function AuthProvider({ children }) {
 }
 
 export function useAuth() {
-  return useContext(AuthContext)
+  const ctx = useContext(AuthContext)
+  if (!ctx) {
+    throw new Error('useAuth must be used within an AuthProvider')
+  }
+  return ctx
 }

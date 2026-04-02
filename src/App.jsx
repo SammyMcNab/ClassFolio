@@ -3,6 +3,7 @@ import { ToastProvider } from './components/Toast'
 import { AuthProvider } from './contexts/AuthContext'
 import Gallery from './pages/Gallery'
 import Login from './pages/Login'
+import Register from './pages/Register'
 import Dashboard from './pages/Dashboard'
 import ProjectView from './pages/ProjectView'
 
@@ -13,6 +14,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Gallery />} />
           <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/project/:id" element={<ProjectView />} />
         </Routes>
