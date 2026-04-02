@@ -5,3 +5,6 @@ export const trackView = ({ projectId, page }) =>
 
 export const getStats = (projectId, { signal } = {}) =>
   get(`/analytics/stats/${projectId}`, { auth: false, signal })
+
+export const getSummary = (scope, { signal } = {}) =>
+  get(`/analytics/summary?scope=${encodeURIComponent(scope)}`, { signal })

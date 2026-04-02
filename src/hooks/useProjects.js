@@ -56,8 +56,8 @@ export function useProjects() {
 
   const refresh = useCallback(() => fetchProjects(), [fetchProjects])
 
-  const createProject = useCallback(async ({ title, description }) => {
-    const data = await projectsApi.createProject({ title, description })
+  const createProject = useCallback(async (fields) => {
+    const data = await projectsApi.createProject(fields)
     if (!data?.project) throw new Error('Create project response missing project')
     const proj = normalize(data.project)
     setProjects(prev => [...prev, proj])
@@ -80,11 +80,11 @@ export function useProjects() {
     setProjects(prev => prev.filter(p => p.projectId !== projectId && p.id !== projectId))
   }, [])
 
-  const uploadAndDeploy = useCallback(async ({ file, title, description, apiEndpoint = import.meta.env.VITE_API_URL }) => {
+  const uploadAndDeploy = useCallback(async ({ file, title, description, subject, grade, visibility, apiEndpoint = import.meta.env.VITE_API_URL }) => {
     setUploading(true)
     setUploadProgress(0)
     try {
-      const created = await projectsApi.createProject({ title, description })
+      const created = await projectsApi.createProject({ title, description, subject, grade, visibility })
       const project = created?.project
       if (!project?.projectId) throw new Error('Create project response missing projectId')
       const { projectId } = project

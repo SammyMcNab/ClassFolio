@@ -36,6 +36,8 @@ export function AuthProvider({ children }) {
     authApi.verifyToken()
       .then((data) => {
         if (data && typeof data === 'object' && !Array.isArray(data)) {
+          if (data.displayName) localStorage.setItem('cf_user', data.displayName)
+          if (data.role) localStorage.setItem('cf_role', data.role)
           setUser(prev => ({ ...prev, ...data }))
         }
       })
@@ -64,10 +66,17 @@ export function AuthProvider({ children }) {
         throw { message: 'Login response missing token', status: 502 }
       }
       const displayName = data.displayName ?? data.studentId ?? 'Student'
+      const resolvedRole = data.role ?? role
       localStorage.setItem('cf_token', data.token)
       localStorage.setItem('cf_user', displayName)
-      localStorage.setItem('cf_role', role)
-      setUser({ studentId: data.studentId, displayName, role })
+      localStorage.setItem('cf_role', resolvedRole)
+      setUser({
+        studentId: data.studentId,
+        displayName,
+        email: data.email,
+        role: resolvedRole,
+        ownerInstructorId: data.ownerInstructorId,
+      })
       if (data.mustResetPassword) setMustResetPassword(true)
       return { mustResetPassword: !!data.mustResetPassword }
     } catch (err) {
@@ -96,7 +105,7 @@ export function AuthProvider({ children }) {
     setLoading(true)
     setError(null)
     try {
-      await authApi.createStudent({ studentId, displayName, email, tempPassword })
+      return await authApi.createStudent({ studentId, displayName, email, tempPassword })
     } catch (err) {
       setError(err)
       throw err
