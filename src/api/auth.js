@@ -10,7 +10,7 @@ export const resetPassword = ({ newPassword }) =>
   post('/auth/reset-password', { body: { newPassword }, auth: true })
 
 export const createStudent = ({ studentId, displayName, email, tempPassword }) =>
-  post('/auth/create-student', { body: { studentId, displayName, email, tempPassword }, auth: false })
+  post('/auth/create-student', { body: { studentId, displayName, email, tempPassword }, auth: true })
 
 export const register = ({ studentId, displayName, email, password, secretCode }) =>
   post('/auth/register', { body: { studentId, displayName, email, password, secretCode }, auth: false })

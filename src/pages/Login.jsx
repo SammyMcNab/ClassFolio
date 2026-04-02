@@ -196,9 +196,9 @@ export default function Login() {
                 <input type="checkbox" className="accent-[#e8b84b]" />
                 <span className="font-mono text-[11px] text-on-surface-muted">Remember me</span>
               </label>
-              <button type="button" className="font-mono text-[11px] text-silver hover:text-on-surface transition-colors">
-                Forgot password?
-              </button>
+              <span className="font-mono text-[11px] text-on-surface-muted">
+                Need a reset? Ask your instructor.
+              </span>
             </div>
 
             {auth.error && (
